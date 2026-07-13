@@ -1,0 +1,22 @@
+[
+  {"question": "How did MrBeast figure out the YouTube algorithm?", "expected_video_ids": ["5zu8s38ZwtQ", "5wvmDSMH9AM"]},
+  {"question": "What YouTube advice does MrBeast give in his interviews?", "expected_video_ids": ["5wvmDSMH9AM", "5zu8s38ZwtQ"]},
+  {"question": "What can I learn from studying Mark Rober's videos?", "expected_video_ids": ["4wMc7C1vVeo"]},
+  {"question": "Why is Ryan Trahan's content so bingeable?", "expected_video_ids": ["fdcJoPZKm9c"]},
+  {"question": "How did Doctor Mike grow to a million subscribers so fast?", "expected_video_ids": ["-G34rwQFWcI"]},
+  {"question": "How do I write a killer intro that hooks viewers?", "expected_video_ids": ["mtauI51tE6w", "TOHQXdCAo5k", "eRWyf-oDdCI"]},
+  {"question": "How do I design a thumbnail people actually click?", "expected_video_ids": ["0TolBiTrUg4", "Dpwz0Nx-8og", "2TaFhoumDlc", "ODmlNtOedmo"]},
+  {"question": "How can I make my video titles better?", "expected_video_ids": ["cF0wTWOQE1s", "2TaFhoumDlc", "Dpwz0Nx-8og", "ODmlNtOedmo"]},
+  {"question": "How do I come up with good video ideas?", "expected_video_ids": ["BSx1r5kj_OE"]},
+  {"question": "How much money can you make in your first year on YouTube?", "expected_video_ids": ["sFwdctKMUaE", "PW5_L0DRI9A"]},
+  {"question": "How should a complete beginner make their first YouTube video?", "expected_video_ids": ["ZWKxukGWF5U"]},
+  {"question": "How do I pick the right niche for my channel?", "expected_video_ids": ["ZGN_bxJXnmM"]},
+  {"question": "How can a small channel rank first in YouTube search?", "expected_video_ids": ["CUft-1LV34Y"]},
+  {"question": "What gear do I need for a budget YouTube studio setup?", "expected_video_ids": ["yEJ4UTQoHXg"]},
+  {"question": "How do I get more confident talking to a camera?", "expected_video_ids": ["Qun62mlegJE"]},
+  {"question": "Is making YouTube Shorts worth it or a mistake?", "expected_video_ids": ["Izmx3UVjNIc"]},
+  {"question": "What small daily habits help grow a channel to 100K subscribers?", "expected_video_ids": ["oC240AOSSRI"]},
+  {"question": "How do I actually use YouTube Studio analytics?", "expected_video_ids": ["oGjHGcmHin4"]},
+  {"question": "How should I edit my videos so viewers keep watching?", "expected_video_ids": ["PIjeg7mAF4g", "DmIvnjYkmn4"]},
+  {"question": "What is the YouTube Dip and how do I get through it?", "expected_video_ids": ["mOFJLBV0LbM"]}
+]
