@@ -1,0 +1,6 @@
+# Build pipeline + tests (superset of runtime deps).
+-r requirements.txt
+yt-dlp==2026.7.4
+youtube-transcript-api==1.2.4
+langchain-text-splitters==1.1.2
+pytest==9.1.1

@@ -23,8 +23,9 @@ CHUNK_OVERLAP = 200
 EMBED_MODEL = "all-MiniLM-L6-v2"
 EMBED_BATCH_SIZE = 64
 
-# Generation
-GEMINI_MODEL = "gemini-2.5-flash"
+# Generation. gemini-2.5-flash is rejected for new API keys (404), so the
+# default is the current stable flash model.
+GEMINI_MODEL = "gemini-3.5-flash"
 
 # Index artifacts (written/read as a matched pair)
 INDEX_PATH = DATA_DIR / "faiss_index.index"
