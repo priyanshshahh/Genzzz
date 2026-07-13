@@ -71,13 +71,27 @@ def fetch_channel_videos(channel_id: str) -> list[dict]:
     return parse_playlist_info(info)
 
 
+class TranscriptFetchBlocked(RuntimeError):
+    """YouTube is rate-limiting / IP-blocking transcript requests (retryable)."""
+
+
 def fetch_transcript(video_id: str, languages: tuple[str, ...] = ("en",)) -> str | None:
-    """Fetch a caption transcript as plain text; None if unavailable."""
+    """Fetch a caption transcript as plain text.
+
+    Returns None when the video genuinely has no usable transcript.
+    Raises TranscriptFetchBlocked when YouTube is blocking the request —
+    callers must back off and retry instead of recording "no transcript".
+    """
     from youtube_transcript_api import YouTubeTranscriptApi
-    from youtube_transcript_api._errors import CouldNotRetrieveTranscript
+    from youtube_transcript_api._errors import (
+        CouldNotRetrieveTranscript,
+        RequestBlocked,
+    )
 
     try:
         fetched = YouTubeTranscriptApi().fetch(video_id, languages=list(languages))
+    except RequestBlocked as exc:
+        raise TranscriptFetchBlocked(f"YouTube blocked transcript request for {video_id}") from exc
     except CouldNotRetrieveTranscript:
         return None
     return " ".join(snippet.text for snippet in fetched)

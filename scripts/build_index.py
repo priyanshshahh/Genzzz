@@ -40,7 +40,23 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--sleep-min", type=float, default=1.0, help="Min pause between transcript fetches")
     p.add_argument("--sleep-max", type=float, default=3.0, help="Max pause between transcript fetches")
     p.add_argument("--no-cache", action="store_true", help="Ignore the transcript cache and refetch everything")
+    p.add_argument("--max-retries", type=int, default=3, help="Retries per video when YouTube rate-limits")
+    p.add_argument("--backoff", type=float, default=60.0, help="Base seconds to wait after a rate-limit hit")
     return p.parse_args()
+
+
+def fetch_with_backoff(video_id: str, max_retries: int, backoff: float) -> str | None:
+    """Fetch a transcript, sleeping backoff * attempt on rate-limit hits."""
+    for attempt in range(1, max_retries + 1):
+        try:
+            return youtube.fetch_transcript(video_id)
+        except youtube.TranscriptFetchBlocked:
+            if attempt == max_retries:
+                raise
+            wait = backoff * attempt
+            print(f"        rate-limited; waiting {wait:.0f}s (attempt {attempt}/{max_retries}) ...")
+            time.sleep(wait)
+    return None
 
 
 def load_cache(path: Path) -> dict[str, str]:
@@ -72,13 +88,19 @@ def main() -> int:
 
     print("[2/4] Fetching transcripts (captions first, cache-aware) ...")
     cache: dict[str, str] = {} if args.no_cache else load_cache(cache_path)
-    fetched = with_captions = 0
+    fetched = with_captions = blocked = 0
     for i, video in enumerate(videos, 1):
         vid = video["video_id"]
         if vid in cache:
             status = "cached" if cache[vid] else "cached (none)"
         else:
-            text = youtube.fetch_transcript(vid)
+            try:
+                text = fetch_with_backoff(vid, args.max_retries, args.backoff)
+            except youtube.TranscriptFetchBlocked:
+                # Do NOT cache — a rerun should retry these videos.
+                blocked += 1
+                print(f"      {i}/{len(videos)} {vid} BLOCKED (will retry on next run)")
+                continue
             if text is None and args.whisper:
                 print(f"      {i}/{len(videos)} {vid} no captions -> whisper ...")
                 text = youtube.transcribe_with_whisper(vid)
@@ -87,10 +109,14 @@ def main() -> int:
             fetched += 1
             status = "ok" if text else "no transcript"
             time.sleep(random.uniform(args.sleep_min, args.sleep_max))
-        if cache[vid]:
+        if cache.get(vid):
             with_captions += 1
         print(f"      {i}/{len(videos)} {vid} {status}")
-    print(f"      transcripts: {with_captions}/{len(videos)} videos ({fetched} newly fetched)")
+    print(f"      transcripts: {with_captions}/{len(videos)} videos "
+          f"({fetched} newly fetched, {blocked} blocked)")
+    if blocked:
+        print(f"      WARNING: {blocked} videos were rate-limited by YouTube — "
+              "rerun later to fetch them; the cache keeps what succeeded.")
 
     print("[3/4] Cleaning + chunking ...")
     chunks = pipeline.chunk_corpus(videos, cache, args.chunk_size, args.chunk_overlap)
