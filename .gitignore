@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.DS_Store
+*.m4a
+*.mp3
+.streamlit/secrets.toml
+data/transcripts_cache.json
