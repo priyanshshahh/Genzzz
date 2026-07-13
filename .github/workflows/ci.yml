@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main, production]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      # The offline test-suite injects a fake embedder, so it only needs the
+      # light deps — no torch/sentence-transformers download in CI.
+      - name: Install test dependencies
+        run: |
+          pip install faiss-cpu==1.14.3 numpy==2.5.1 \
+            langchain-text-splitters==1.1.2 youtube-transcript-api==1.2.4 \
+            pytest==9.1.1
+      - name: Run tests
+        run: pytest tests/ -v
