@@ -62,7 +62,31 @@ Key design points:
 
 ## Retrieval evaluation (real run)
 
-<!-- EVAL_RESULTS -->
+`python scripts/eval_retrieval.py --report-distances`, against the committed
+`data/faiss_index.index` / `data/faiss_metadata.json` (1141 chunks), on the
+20-question labeled set in `eval/queries.json`:
+
+| Metric    | Value |
+|-----------|-------|
+| Recall@1  | 0.250 |
+| Recall@3  | 0.450 |
+| Recall@5  | 0.450 |
+| MRR       | 0.365 |
+
+This is the honest baseline for pure dense MiniLM retrieval with no
+keyword/BM25 hybrid and no reranker (see Limitations). 9 of 20 queries
+never rank the expected video in the top 50 at all — mostly questions
+phrased around a creator's name or general framing ("how did MrBeast
+figure out the algorithm") rather than the terms actually used in the
+transcript. Recall@3 == Recall@5 here because no additional expected
+videos are recovered between rank 3 and rank 5 on this label set.
+
+Distance-threshold separation (`config.DISTANCE_THRESHOLD = 1.10`) holds on
+this run: on-topic top-1 distances range 0.467-1.073 (mean 0.743), while
+five clearly off-topic control queries (boiling points, pasta recipes,
+tax filing, cricket rules, Roman history) score 1.458-1.688 — a clean gap,
+so the app's "no relevant content" fallback fires correctly for
+out-of-scope questions even though in-scope recall has real headroom.
 
 ## Quickstart
 
