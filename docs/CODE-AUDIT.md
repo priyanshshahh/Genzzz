@@ -77,7 +77,7 @@ fail later with a confusing `KeyError`/`AttributeError` deep in `app.py`
 instead of the clear "rebuild with scripts/build_index.py" message the
 pairing checks already produce for the other two invariants.
 
-### 7. Dead code: legacy Colab notebook duplicates the production pipeline (medium value, low effort)
+### 7. Dead code: legacy Colab notebook duplicates the production pipeline (medium value, low effort) — RESOLVED: deleted later this campaign (see PROJECT-NOTES)
 `notebooks/youtube_scraper.ipynb` (1039 lines, 17 cells) is the original
 notebook that `scripts/build_index.py` + `core/*` replaced (per
 `docs/PROJECT-NOTES.md`'s 2026-07-12 changelog entry). It still contains

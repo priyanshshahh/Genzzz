@@ -26,9 +26,7 @@ data/
   faiss_index.index         Committed FAISS IndexFlatL2, 1141 vectors, dim 384
   faiss_metadata.json        Chunk records + build_info, paired 1:1 with the index
   transcripts_cache.json     video_id -> raw transcript cache (resumability)
-notebooks/youtube_scraper.ipynb  Original Colab notebook this pipeline replaced (kept,
-                                  unused — see CODE-AUDIT.md)
-tests/                      29 offline pytest tests (fake embedder, mocked YouTube calls)
+tests/                      Offline pytest tests (fake embedder, mocked YouTube calls)
 docs/PROJECT-NOTES.md        Running changelog / operational notes (hand-maintained)
 .github/workflows/ci.yml     Push/PR CI: pytest only, no heavy ML deps installed
 ```
