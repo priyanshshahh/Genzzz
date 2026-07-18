@@ -53,40 +53,78 @@ Key design points:
 - **Matched-pair artifacts** — `data/faiss_index.index` and
   `data/faiss_metadata.json` are written together; loaders verify
   `ntotal == len(chunks)` and the embedding dimension before serving.
+- **Hybrid retrieval + rerank** — BM25 (keyword) fused with dense FAISS via
+  reciprocal-rank fusion, then a CPU cross-encoder reranks the fused top-50.
+  Both are config flags so the pipeline can be A/B'd against the dense-only
+  baseline on the same index (see the eval table below).
 - **Relevance threshold** — MiniLM vectors are unit-norm, so FAISS
-  squared-L2 = `2 - 2*cosine`. Results above the threshold are dropped:
+  squared-L2 = `2 - 2*cosine`. Final results are gated by dense distance:
   off-topic questions get "no relevant content", not forced top-k.
 - **Resumable scraping** — transcript fetches are cached; YouTube
   rate-limit blocks are detected, retried with backoff, and never
   mis-recorded as "video has no captions".
 
-## Retrieval evaluation (real run)
+## Retrieval evaluation — dense → hybrid → rerank (real runs)
 
-`python scripts/eval_retrieval.py --report-distances`, against the committed
-`data/faiss_index.index` / `data/faiss_metadata.json` (1141 chunks), on the
-20-question labeled set in `eval/queries.json`:
+The whole point of this project is to measure retrieval, find the ceiling,
+and move it. The dense-only baseline was retrieval-bound, so two
+production-standard first/second-stage techniques were added and A/B'd on
+the **same committed index** (`data/faiss_index.index`, 1141 chunks), toggled
+by config flags:
 
-| Metric    | Value |
-|-----------|-------|
-| Recall@1  | 0.250 |
-| Recall@3  | 0.450 |
-| Recall@5  | 0.450 |
-| MRR       | 0.365 |
+- **Hybrid** — BM25 (sparse/keyword) fused with dense FAISS via
+  reciprocal-rank fusion, so exact terms (names, product names, numbers) the
+  dense model ranks too low still enter the candidate pool.
+- **+Rerank** — a CPU cross-encoder (`ms-marco-MiniLM-L6-v2`) reorders the
+  fused top-50 to the final top-k.
 
-This is the honest baseline for pure dense MiniLM retrieval with no
-keyword/BM25 hybrid and no reranker (see Limitations). 9 of 20 queries
-never rank the expected video in the top 50 at all — mostly questions
-phrased around a creator's name or general framing ("how did MrBeast
-figure out the algorithm") rather than the terms actually used in the
-transcript. Recall@3 == Recall@5 here because no additional expected
-videos are recovered between rank 3 and rank 5 on this label set.
+Every number below is from a real run this session
+(`python scripts/eval_retrieval.py [--hybrid] [--rerank]`, `PYTHONHASHSEED=0`).
 
-Distance-threshold separation (`config.DISTANCE_THRESHOLD = 1.10`) holds on
-this run: on-topic top-1 distances range 0.467-1.073 (mean 0.743), while
-five clearly off-topic control queries (boiling points, pasta recipes,
-tax filing, cricket rules, Roman history) score 1.458-1.688 — a clean gap,
-so the app's "no relevant content" fallback fires correctly for
-out-of-scope questions even though in-scope recall has real headroom.
+### Expanded set — 55 labeled queries (`eval/queries_expanded.json`)
+
+Authored against the actual transcripts; every target video genuinely
+answers its query, and all 55 targets are in-corpus (so retrieval can
+actually reach them — 0/55 unreachable). This is the set to trust.
+
+| Config          | Recall@1 | Recall@3 | Recall@5 | MRR   |
+|-----------------|----------|----------|----------|-------|
+| dense-only      | 0.509    | 0.818    | 0.855    | 0.684 |
+| + hybrid        | 0.509    | 0.855    | 0.909    | 0.688 |
+| + hybrid + rerank | **0.673** | **0.891** | **0.964** | **0.788** |
+
+Hybrid adds a modest Recall@3/@5 lift (it widens the candidate pool); the
+**cross-encoder is the decisive lever**, moving Recall@1 0.509 → 0.673 and
+MRR 0.684 → 0.788 by reordering already-retrieved candidates — exactly the
+"retrieve wide, rerank precise" production pattern. This is the config the
+app ships with (`config.HYBRID = True`, `config.RERANK = True`).
+
+### Legacy set — original 20 queries (`eval/queries.json`)
+
+Kept unchanged as the originally-published baseline. **Not comparable to the
+expanded numbers above** — 9 of its 20 targets are videos that aren't in the
+committed corpus at all (they can never be retrieved), which caps every
+metric and makes the set noisy.
+
+| Config          | Recall@1 | Recall@3 | Recall@5 | MRR   |
+|-----------------|----------|----------|----------|-------|
+| dense-only      | 0.250    | 0.450    | 0.450    | 0.365 |
+| + hybrid        | 0.350    | 0.450    | 0.550    | 0.425 |
+| + hybrid + rerank | 0.350  | 0.450    | 0.550    | **0.412** |
+
+**Honest negative:** on the legacy set the cross-encoder does *not* help — it
+leaves Recall@k flat and slightly lowers MRR (0.425 → 0.412) vs. hybrid
+alone. That's a real result, not a bug: with 9/20 targets unreachable the
+reranker only reshuffles the handful of reachable hits, and on n=11 that
+reshuffle is noise. It's the clearest argument for why the eval set had to
+be expanded before trusting any delta — which is what the 55-query set is
+for. (The dense-only legacy row is the floor the CI regression gate defends.)
+
+Distance-threshold separation (`config.DISTANCE_THRESHOLD = 1.10`) still
+holds: on-topic top-1 dense distances run 0.467–1.073 (mean 0.743) while five
+clearly off-topic control queries (boiling points, pasta recipes, tax filing,
+cricket rules, Roman history) score 1.458–1.688 — a clean gap, so the app's
+"no relevant content" fallback fires correctly for out-of-scope questions.
 
 ## Quickstart
 
@@ -133,8 +171,14 @@ from a deterministic fake embedder, so CI never downloads torch models.
   more than one run. Metrics/view counts are a snapshot at build time.
 - Single-channel index per build; no incremental updates (rebuild to
   refresh).
-- Retrieval is pure dense similarity — no keyword/BM25 hybrid, no
-  reranker. The eval below is the honest baseline.
+- Retrieval is a two-stage pipeline: BM25 + dense fused via RRF, then a CPU
+  cross-encoder rerank (both flag-toggleable, dense-only remains the
+  baseline). No learned/fine-tuned reranker or embedding — a pretrained
+  cross-encoder is the right call for a corpus this size; FAISS flat/exact
+  search is correct at 1141 vectors and needs no ANN tuning.
+- The cross-encoder model (`ms-marco-MiniLM-L6-v2`, ~90 MB) downloads on
+  first use, so a fresh Hugging Face Space has a one-time cold-start cost the
+  first query pays; set `config.RERANK = False` to skip it.
 - Answers are grounded in retrieved excerpts, but generation quality
   depends on Gemini; the app instructs the model to admit when excerpts
   don't cover the question.
