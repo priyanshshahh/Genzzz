@@ -7,6 +7,10 @@ test-suite and the Streamlit app never pay for them.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 VIDEO_ID_LEN = 11
 
 # Lean per-video metadata fields carried into every chunk record.
@@ -75,6 +79,16 @@ class TranscriptFetchBlocked(RuntimeError):
     """YouTube is rate-limiting / IP-blocking transcript requests (retryable)."""
 
 
+class WhisperTranscriptionError(RuntimeError):
+    """Whisper audio transcription failed for a reason other than 'no speech'.
+
+    Raised for a broken/partial audio download, a missing ffmpeg, a Whisper
+    model-load failure, an OOM, etc. — cases the caller must NOT record as
+    "this video has no transcript", unlike a genuinely silent video (which
+    returns None / empty text).
+    """
+
+
 def fetch_transcript(video_id: str, languages: tuple[str, ...] = ("en",)) -> str | None:
     """Fetch a caption transcript as plain text.
 
@@ -127,9 +141,22 @@ def transcribe_with_whisper(video_id: str, model_name: str = "small.en") -> str 
             ydl.download([f"https://youtu.be/{video_id}"])
         model = whisper.load_model(model_name)
         result = model.transcribe(audio_path)
-        return result["text"]
-    except Exception:
-        return None
+    except Exception as exc:
+        # Do NOT swallow this as "no transcript" — a failed download, missing
+        # ffmpeg, model-load error, or OOM is a real failure the caller should
+        # retry, not cache as an empty transcript. Log the real cause and
+        # raise a distinct error so it stays distinguishable from silence.
+        logger.warning("Whisper transcription failed for %s: %s", video_id, exc, exc_info=True)
+        raise WhisperTranscriptionError(
+            f"Whisper transcription failed for {video_id}: {exc}"
+        ) from exc
     finally:
         if os.path.exists(audio_path):
             os.remove(audio_path)
+
+    # Whisper ran successfully but found no speech -> genuinely no transcript.
+    text = (result.get("text") or "").strip()
+    if not text:
+        logger.info("Whisper produced no speech for %s (treating as no transcript)", video_id)
+        return None
+    return text

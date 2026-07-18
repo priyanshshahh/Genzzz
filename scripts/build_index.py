@@ -103,7 +103,14 @@ def main() -> int:
                 continue
             if text is None and args.whisper:
                 print(f"      {i}/{len(videos)} {vid} no captions -> whisper ...")
-                text = youtube.transcribe_with_whisper(vid)
+                try:
+                    text = youtube.transcribe_with_whisper(vid)
+                except youtube.WhisperTranscriptionError as exc:
+                    # A real transcription failure (not silence) — don't cache
+                    # it as "no transcript"; leave it for a rerun to retry.
+                    blocked += 1
+                    print(f"      {i}/{len(videos)} {vid} WHISPER FAILED ({exc}); will retry")
+                    continue
             cache[vid] = text or ""
             save_cache(cache_path, cache)
             fetched += 1
