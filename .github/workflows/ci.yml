@@ -20,7 +20,7 @@ jobs:
         run: |
           pip install faiss-cpu==1.14.3 numpy==2.5.1 \
             langchain-text-splitters==1.1.2 youtube-transcript-api==1.2.4 \
-            pytest==9.1.1
+            rank-bm25==0.2.2 pytest==9.1.1
       - name: Run tests
         env:
           PYTHONHASHSEED: "0"
