@@ -10,7 +10,13 @@ import os
 import streamlit as st
 
 import config
-from core.retrieval import IndexMetadataMismatch, embed_query, load_index_pair, search
+from core.retrieval import (
+    IndexMetadataMismatch,
+    build_bm25,
+    load_cross_encoder,
+    load_index_pair,
+    retrieve,
+)
 
 st.set_page_config(page_title="ChannelMind — YouTube RAG", page_icon="🎬")
 
@@ -31,12 +37,20 @@ def load_resources():
 
     index, metadata = load_index_pair(config.INDEX_PATH, config.METADATA_PATH)
     embedder = SentenceTransformer(config.EMBED_MODEL)
-    llm = ChatGoogleGenerativeAI(model=config.GEMINI_MODEL)
-    return index, metadata, embedder, llm
+    llm = ChatGoogleGenerativeAI(
+        model=config.GEMINI_MODEL,
+        temperature=config.GEN_TEMPERATURE,
+        max_output_tokens=config.GEN_MAX_OUTPUT_TOKENS,
+    )
+    # BM25 is cheap to build in-memory; the cross-encoder is only loaded when
+    # reranking is enabled so a dense/hybrid deploy never pays its cold start.
+    bm25 = build_bm25(metadata["chunks"]) if config.HYBRID else None
+    cross_encoder = load_cross_encoder(config.CROSS_ENCODER_MODEL) if config.RERANK else None
+    return index, metadata, embedder, llm, bm25, cross_encoder
 
 
 try:
-    index, metadata, embedder, llm = load_resources()
+    index, metadata, embedder, llm, bm25, cross_encoder = load_resources()
 except FileNotFoundError as exc:
     st.error(
         f"{exc}\n\nThe FAISS index and metadata pair is missing. From the repo root run:\n\n"
@@ -58,7 +72,7 @@ def build_rag_prompt(context_chunks, user_question):
         context_text += (
             f"\n---\nTitle: {c.get('title', '')}\n"
             f"URL: {c.get('video_url', '')}\n"
-            f"Excerpt: {c.get('chunk_text', '')[:800]}\n"
+            f"Excerpt: {c.get('chunk_text', '')[:config.EXCERPT_CHARS]}\n"
         )
     return f"""You are an expert YouTube growth coach answering questions about the channel "{channel_name}".
 Use ONLY the information in the following video excerpts (with titles and URLs).
@@ -88,6 +102,12 @@ with st.sidebar:
     st.write(f"Channel: `{build_info.get('channel_id', config.CHANNEL_ID)}`")
     st.write(f"Embeddings: `{build_info.get('embed_model', config.EMBED_MODEL)}`")
     st.write(f"LLM: `{config.GEMINI_MODEL}`")
+    _mode = "dense"
+    if config.HYBRID:
+        _mode = "hybrid + rerank" if config.RERANK else "hybrid (BM25+dense)"
+    elif config.RERANK:
+        _mode = "dense + rerank"
+    st.write(f"Retrieval: `{_mode}`")
     st.write(f"Built: {build_info.get('built_at', 'unknown')}")
 
 with st.form("chat_form"):
@@ -97,8 +117,20 @@ with st.form("chat_form"):
 
 if submitted and user_question:
     with st.spinner("Retrieving..."):
-        query_emb = embed_query(embedder, user_question)
-        results = search(index, chunks, query_emb, top_k=top_k, max_distance=config.DISTANCE_THRESHOLD)
+        results = retrieve(
+            index,
+            chunks,
+            embedder,
+            user_question,
+            top_k=top_k,
+            hybrid=config.HYBRID,
+            rerank=config.RERANK,
+            bm25=bm25,
+            cross_encoder=cross_encoder,
+            candidate_k=config.CANDIDATE_K,
+            rrf_k=config.RRF_K,
+            max_distance=config.DISTANCE_THRESHOLD,
+        )
 
     if not results:
         st.warning(
@@ -106,8 +138,17 @@ if submitted and user_question:
             "Try rephrasing it around YouTube growth, titles, thumbnails, or scripting."
         )
     else:
-        with st.spinner("Generating answer..."):
-            response = llm.invoke(build_rag_prompt(results, user_question))
+        try:
+            with st.spinner("Generating answer..."):
+                response = llm.invoke(build_rag_prompt(results, user_question))
+        except Exception as exc:  # noqa: BLE001 — surface any Gemini-side failure cleanly
+            st.error(
+                "The answer couldn't be generated just now. This is usually a "
+                "temporary Gemini API issue (rate limit, quota, network, or a "
+                "content safety block). Please try again in a moment.\n\n"
+                f"Details: `{type(exc).__name__}: {exc}`"
+            )
+            st.stop()
 
         st.markdown("### Answer")
         st.write(response.text)  # .content is a list of blocks in langchain-core >= 1.0

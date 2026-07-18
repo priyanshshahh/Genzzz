@@ -63,6 +63,16 @@ class TestPairingInvariant:
         with pytest.raises(IndexMetadataMismatch, match="dim"):
             load_index_pair(index_path, metadata_path)
 
+    def test_unsupported_schema_version_raises(self, tmp_path, fake_embedder, fixture_videos, fixture_transcripts):
+        _, _, index_path, metadata_path = build_tiny_pair(
+            tmp_path, fake_embedder, fixture_videos, fixture_transcripts
+        )
+        payload = json.loads(metadata_path.read_text())
+        payload["schema_version"] = 999
+        metadata_path.write_text(json.dumps(payload))
+        with pytest.raises(IndexMetadataMismatch, match="schema_version"):
+            load_index_pair(index_path, metadata_path)
+
 
 class TestThresholdedSearch:
     def test_exact_match_returned_first(self, tmp_path, fake_embedder, fixture_videos, fixture_transcripts):

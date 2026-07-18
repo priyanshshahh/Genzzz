@@ -5,3 +5,6 @@ faiss-cpu==1.14.3
 sentence-transformers==5.6.0
 langchain-google-genai==4.2.7
 numpy==2.5.1
+# Hybrid retrieval: BM25 sparse ranking fused with dense FAISS (tiny, pure-Python).
+# The cross-encoder reranker reuses sentence-transformers (CrossEncoder) above.
+rank-bm25==0.2.2
