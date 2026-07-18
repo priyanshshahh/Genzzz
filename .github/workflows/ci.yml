@@ -25,3 +25,23 @@ jobs:
         env:
           PYTHONHASHSEED: "0"
         run: pytest tests/ -v
+
+  # Regression gate: measure real retrieval quality on the committed index and
+  # fail if it drops below the published floor. Uses the real MiniLM embedder
+  # (deterministic given the model) on the committed 1141-chunk index, so the
+  # numbers are stable run-to-run. Dense-only on the legacy-20 set keeps this
+  # job light (no BM25 dep, no cross-encoder download).
+  eval-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install retrieval dependencies
+        run: pip install faiss-cpu==1.14.3 numpy==2.5.1 sentence-transformers==5.6.0
+      - name: Retrieval regression gate (dense-only, legacy set)
+        env:
+          PYTHONHASHSEED: "0"
+        run: python scripts/eval_retrieval.py --min-r1 0.25 --min-r5 0.45 --min-mrr 0.36
